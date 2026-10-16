@@ -1,3 +1,4 @@
+# backend/app/main.py
 import os
 import sqlite3
 import json
@@ -7,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .models import CompanyValuationRecord
 from .calculator import recompute_pro_forma, compute_valuation_targets
 
-app = FastAPI(title="Finastra Scenario-Based Valuation Studio")
+app = FastAPI(title="Finastra Scenario Valuation Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Store directly in repository root — no paid disk mount required
 DB_PATH = os.getenv("SQLITE_DB_PATH", "valuation_studio.db")
 
 def init_db():
