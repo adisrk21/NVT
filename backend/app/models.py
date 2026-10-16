@@ -16,7 +16,7 @@ class FinancialYearRow(BaseModel):
     tax_percent: float = 25.0
     pat: float
     pat_growth: Optional[float] = None
-    shares_cr: float
+    shares_cr: float = 1.97
     eps: float
 
 class ValuationTarget(BaseModel):
@@ -39,6 +39,7 @@ class ScenarioPackage(BaseModel):
 class CompanyMaster(BaseModel):
     ticker: str
     company_name: str
+    industry: str = "General"
     cmp: float
     change_pct: float = 0.0
     pe_ratio: float = 0.0
@@ -46,7 +47,18 @@ class CompanyMaster(BaseModel):
     high_52w: float = 0.0
     analyst: str = "Saurabh"
     type: str = "STD"
-    in_tracker: bool = True
+    in_tracker: bool = False
     comment: str = ""
-    trend: List[float] = [100, 102, 101, 104, 108, 106, 112]
+    trend: List[float] = []
+    results_url: str = ""
+    reports_url: str = ""
+    # Advanced Stock Valuation Columns
+    moat: str = "Moderate"
+    avg_fcf: float = 0.0
+    fcfd: float = 0.0
+    dcf: float = 0.0
+    value_ratio: float = 1.0
+    opinion: str = "Reasonable"
+    pead_score: float = 6.0
+    return_1m: str = "+2.4%"
     scenarios: Dict[str, ScenarioPackage] = {}

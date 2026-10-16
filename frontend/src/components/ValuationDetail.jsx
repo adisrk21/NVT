@@ -6,6 +6,7 @@ export default function ValuationDetail({ stock, onBack, onSaveStock, onFetchLiv
   const [activeScenario, setActiveScenario] = useState("Management Case");
   const [scenarios, setScenarios] = useState(stock.scenarios || {});
   const [assumptions, setAssumptions] = useState(stock.comment || "");
+  const [isFetching, setIsFetching] = useState(false);
 
   const currentPkg = scenarios[activeScenario] || {
     financials: [],
@@ -56,6 +57,12 @@ export default function ValuationDetail({ stock, onBack, onSaveStock, onFetchLiv
     });
   };
 
+  const handleLiveFetch = async () => {
+    setIsFetching(true);
+    await onFetchLive(stock.ticker);
+    setIsFetching(false);
+  };
+
   const handleSave = () => {
     const updated = { ...stock, scenarios, comment: assumptions };
     onSaveStock(updated);
@@ -88,8 +95,13 @@ export default function ValuationDetail({ stock, onBack, onSaveStock, onFetchLiv
           <button onClick={handleSave} className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold text-xs transition shadow flex items-center gap-1.5">
             <span>✓</span> Saved
           </button>
-          <button onClick={() => onFetchLive(stock.ticker)} className="px-3.5 py-1.5 rounded-lg bg-[#141A2E] hover:bg-[#1E2746] border border-[#1F2942] text-slate-200 text-xs font-semibold transition">
-            ⟳ Fetch Live
+          <button
+            onClick={handleLiveFetch}
+            disabled={isFetching}
+            className="px-3.5 py-1.5 rounded-lg bg-[#141A2E] hover:bg-[#1E2746] border border-[#1F2942] text-slate-200 text-xs font-semibold transition flex items-center gap-1.5"
+          >
+            <span className={isFetching ? 'animate-spin' : ''}>⟳</span>
+            {isFetching ? 'Fetching Live...' : 'Fetch Live'}
           </button>
           <button className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition">
             In Tracker
@@ -103,7 +115,9 @@ export default function ValuationDetail({ stock, onBack, onSaveStock, onFetchLiv
           <span className="text-[10px] font-mono uppercase text-slate-500 block">CURRENT PRICE</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-bold font-mono text-white">₹{stock.cmp?.toLocaleString('en-IN')}</span>
-            <span className="text-xs font-bold text-rose-400">{stock.change_pct}%</span>
+            <span className={`text-xs font-bold ${stock.change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {stock.change_pct >= 0 ? '+' : ''}{stock.change_pct}%
+            </span>
           </div>
         </div>
 
