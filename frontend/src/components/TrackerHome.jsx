@@ -5,16 +5,52 @@ const QUICK_CHIPS = [
   "SBIN", "BHARTIARTL", "ITC", "LT", "BAJFINANCE", "MARUTI"
 ];
 
+function Sparkline({ data, changePct }) {
+  if (!data || data.length < 2) {
+    return <span className="text-slate-600 font-mono text-[10px]">—</span>;
+  }
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const width = 80;
+  const height = 22;
+
+  const points = data
+    .map((val, idx) => {
+      const x = (idx / (data.length - 1)) * width;
+      const y = height - ((val - min) / range) * (height - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  const isUp = (changePct ?? 0) >= 0;
+  const color = isUp ? '#34D399' : '#F87171';
+
+  return (
+    <svg width={width} height={height} className="overflow-visible inline-block">
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+      />
+    </svg>
+  );
+}
+
 export default function TrackerHome({ companies, onSelectStock, activeTab, setActiveTab, onSaveComment }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All"); // "All", "Normal", "Test"
-  const [mode, setMode] = useState("Basic"); // "Basic", "Advanced"
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [mode, setMode] = useState("Basic"); // "Basic" or "Advanced"
   const [editingTicker, setEditingTicker] = useState(null);
   const [commentDraft, setCommentDraft] = useState("");
 
   const filtered = companies.filter(c => {
-    const matchesSearch = c.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.ticker.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      c.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.ticker?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === "All" || c.type === typeFilter;
     return matchesSearch && matchesType;
   });
@@ -29,10 +65,45 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
     setEditingTicker(null);
   };
 
+  const exportToExcel = () => {
+    const headers = [
+      "Company", "Ticker", "Type", "CMP", "Change %", "Analyst",
+      "Base CAGR", "Bull CAGR", "Bear CAGR", "Mgmt CAGR",
+      "Moat", "Avg FCF", "DCF 25x", "Market Cap", "Value Ratio", "Comments"
+    ];
+    const rows = filtered.map(c => [
+      c.company_name,
+      c.ticker,
+      c.type,
+      c.cmp,
+      c.change_pct,
+      c.analyst,
+      c.scenarios?.["Base Case"]?.cagr_headline ?? "",
+      c.scenarios?.["Bull Case"]?.cagr_headline ?? "",
+      c.scenarios?.["Bear Case"]?.cagr_headline ?? "",
+      c.scenarios?.["Management Case"]?.cagr_headline ?? "",
+      c.moat || "",
+      c.avg_fcf || "",
+      c.dcf || "",
+      c.market_cap_cr || "",
+      c.value_ratio || "",
+      `"${(c.comment || "").replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Valuation_Universe_${activeTab}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-[#0B0E17] text-slate-100 flex flex-col font-sans">
       {/* 1. TOP HEADER & QUICK CHIPS */}
-      <header className="border-b border-[#1A2238] bg-[#0E1322] px-6 py-3 flex flex-col gap-3">
+      <header className="border-b border-[#1A2238] bg-[#0E1322] px-6 py-3 flex flex-col gap-3 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -71,8 +142,7 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
       </header>
 
       {/* 2. SUB-HEADER / CONTROLS STRIP */}
-      <div className="border-b border-[#1A2238] bg-[#0E1322] px-6 py-2.5 flex flex-wrap items-center justify-between gap-4">
-        {/* Left: Tracker vs All Companies */}
+      <div className="border-b border-[#1A2238] bg-[#0E1322] px-6 py-2.5 flex flex-wrap items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex bg-[#141A2E] rounded-md p-0.5 border border-[#1F2942]">
             <button
@@ -91,9 +161,7 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
           <span className="text-xs font-mono text-slate-500">{filtered.length} of {companies.length} companies</span>
         </div>
 
-        {/* Right: Filters & Modes */}
         <div className="flex items-center gap-3">
-          {/* Filter Pills */}
           <div className="flex bg-[#141A2E] rounded-md p-0.5 border border-[#1F2942] text-xs">
             {["All", "Normal", "Test"].map(t => (
               <button
@@ -106,33 +174,36 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
             ))}
           </div>
 
-          {/* Basic / Advanced Switch */}
+          {/* BASIC / ADVANCED MODE SWITCH */}
           <div className="flex bg-[#141A2E] rounded-md p-0.5 border border-[#1F2942] text-xs">
             <button
               onClick={() => setMode('Basic')}
-              className={`px-2.5 py-0.5 rounded transition ${mode === 'Basic' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+              className={`px-2.5 py-1 rounded transition font-medium ${mode === 'Basic' ? 'bg-indigo-600 text-white font-semibold shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Basic
             </button>
             <button
               onClick={() => setMode('Advanced')}
-              className={`px-2.5 py-0.5 rounded transition ${mode === 'Advanced' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+              className={`px-2.5 py-1 rounded transition font-medium ${mode === 'Advanced' ? 'bg-indigo-600 text-white font-semibold shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Advanced
             </button>
           </div>
 
-          <button className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow">
+          <button
+            onClick={exportToExcel}
+            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow transition"
+          >
             <span>📥</span> Excel
           </button>
         </div>
       </div>
 
-      {/* 3. MASTER TRACKER TABLE */}
-      <main className="flex-1 overflow-x-auto p-6">
+      {/* 3. DYNAMIC OBSIDIAN TRACKER TABLE */}
+      <main className="flex-1 overflow-auto p-6">
         <div className="border border-[#1A2238] rounded-xl overflow-hidden bg-[#0E1322] shadow-2xl">
           <table className="w-full text-left border-collapse text-xs">
-            <thead className="bg-[#121829] border-b border-[#1A2238] font-mono text-[11px] text-slate-400 uppercase tracking-wider">
+            <thead className="bg-[#121829] border-b border-[#1A2238] font-mono text-[11px] text-slate-400 uppercase tracking-wider sticky top-0 z-10">
               <tr>
                 <th className="p-3 w-10 text-center">#</th>
                 <th className="p-3">COMPANY</th>
@@ -143,6 +214,19 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
                 <th className="p-3 text-right text-emerald-400">BULL CAGR</th>
                 <th className="p-3 text-right text-rose-400">BEAR CAGR</th>
                 <th className="p-3 text-right text-amber-400">MGMT CAGR</th>
+
+                {/* ADVANCED COLUMNS EXPANSION */}
+                {mode === "Advanced" && (
+                  <>
+                    <th className="p-3 text-center">MOAT</th>
+                    <th className="p-3 text-right">AVG FCF (CR)</th>
+                    <th className="p-3 text-right">DCF (25X)</th>
+                    <th className="p-3 text-right">MCAP (CR)</th>
+                    <th className="p-3 text-center">VALUE</th>
+                    <th className="p-3 text-center">PEAD</th>
+                  </>
+                )}
+
                 <th className="p-3 text-center">TREND</th>
                 <th className="p-3 text-center">RESULTS</th>
                 <th className="p-3 text-center">REPORTS</th>
@@ -160,7 +244,7 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
                   <tr key={c.ticker} className="hover:bg-[#151C2F] transition-colors group">
                     <td className="p-3 text-center font-mono text-slate-500">{idx + 1}</td>
                     
-                    {/* Company Name + Ticker Badge */}
+                    {/* Stock Name + Ticker Badge */}
                     <td className="p-3 cursor-pointer" onClick={() => onSelectStock(c.ticker)}>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-100 group-hover:text-indigo-400 transition">
@@ -174,7 +258,7 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
 
                     <td className="p-3 font-mono text-slate-400">{c.type || 'STD'}</td>
 
-                    {/* CMP with daily delta */}
+                    {/* CMP with Live % Change */}
                     <td className="p-3 text-right font-mono">
                       <div className="font-bold text-slate-100">₹{c.cmp?.toLocaleString('en-IN')}</div>
                       <div className={`text-[10px] font-semibold ${c.change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -182,15 +266,15 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
                       </div>
                     </td>
 
-                    {/* Analyst Avatar Badge */}
+                    {/* Analyst Badge */}
                     <td className="p-3">
                       <div className="inline-flex items-center gap-1.5 bg-indigo-950/60 border border-indigo-700/50 text-indigo-300 px-2 py-0.5 rounded-full text-[11px] font-semibold">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                         {c.analyst || 'Unassigned'}
                       </div>
                     </td>
 
-                    {/* Scenario CAGRs */}
+                    {/* 4-Scenario CAGR Columns */}
                     <td className="p-3 text-right font-mono">
                       {baseCagr != null ? (
                         <>
@@ -235,31 +319,72 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
                       ) : <span className="text-slate-600">—</span>}
                     </td>
 
-                    {/* Interactive SVG Sparkline */}
+                    {/* ADVANCED COLUMNS DATA */}
+                    {mode === "Advanced" && (
+                      <>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                            (c.moat || '').includes('Strong') ? 'bg-purple-950/70 border border-purple-700/50 text-purple-300' : 'bg-[#141A2E] text-slate-400'
+                          }`}>
+                            {c.moat || 'Moderate'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-mono text-slate-300">
+                          ₹{c.avg_fcf ? c.avg_fcf.toLocaleString('en-IN') : '—'}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-indigo-400">
+                          ₹{c.dcf ? c.dcf.toLocaleString('en-IN') : '—'}
+                        </td>
+                        <td className="p-3 text-right font-mono text-slate-200">
+                          ₹{c.market_cap_cr ? c.market_cap_cr.toLocaleString('en-IN') : '—'}
+                        </td>
+                        <td className="p-3 text-center font-mono">
+                          <span className={`font-bold ${
+                            c.value_ratio <= 0.85 ? 'text-emerald-400' : c.value_ratio > 1.3 ? 'text-rose-400' : 'text-slate-300'
+                          }`}>
+                            {c.value_ratio ? `${c.value_ratio}x` : 'N/M'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center font-mono">
+                          <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-emerald-950/60 border border-emerald-800/40 text-emerald-400">
+                            {c.pead_score || 7}/10
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* DYNAMIC 30-DAY STOCK GRAPH SPARKLINE */}
                     <td className="p-3 text-center">
-                      <svg className="w-16 h-5 inline-block text-emerald-400" viewBox="0 0 100 25" fill="none">
-                        <polyline
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          points="0,20 20,18 40,22 60,10 80,12 100,4"
-                        />
-                      </svg>
+                      <Sparkline data={c.trend} changePct={c.change_pct} />
                     </td>
 
+                    {/* LATEST RESULT PDF / WORD DIRECT LINK */}
                     <td className="p-3 text-center">
-                      <button className="text-slate-500 hover:text-slate-200" title="Quarterly Filings">📋</button>
+                      <a
+                        href={c.results_url || `https://www.screener.in/company/${c.ticker}/#documents`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center p-1.5 rounded hover:bg-[#1F2942] text-slate-400 hover:text-amber-400 transition"
+                        title="View Latest Quarterly Result PDF / Filing"
+                      >
+                        📄
+                      </a>
                     </td>
 
+                    {/* REPORTS / SCREENER PROFILE */}
                     <td className="p-3 text-center">
-                      <a href={`https://www.screener.in/company/${c.ticker}/`} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-indigo-400" title="Screener Report">
+                      <a
+                        href={c.reports_url || `https://www.screener.in/company/${c.ticker}/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center p-1.5 rounded hover:bg-[#1F2942] text-slate-400 hover:text-indigo-400 transition"
+                        title="Open Screener.in Consolidated Reports"
+                      >
                         📎
                       </a>
                     </td>
 
-                    {/* Inline Comment Editor */}
+                    {/* INLINE COMMENT EDITOR */}
                     <td className="p-3 max-w-xs">
                       {editingTicker === c.ticker ? (
                         <div className="flex items-center gap-1">
