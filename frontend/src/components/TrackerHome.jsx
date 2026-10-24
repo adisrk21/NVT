@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
 const QUICK_CHIPS = [
   "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR",
@@ -40,20 +40,174 @@ function Sparkline({ data, changePct }) {
   );
 }
 
+// Reusable Sortable Column Header Component
+function SortHeader({
+  label,
+  colKey,
+  sortConfig,
+  onSort,
+  align = "left",
+  className = "",
+  title
+}) {
+  const isActive = sortConfig.key === colKey;
+  const isAsc = sortConfig.direction === 'asc';
+
+  return (
+    <th
+      onClick={() => onSort(colKey)}
+      title={title || `Sort by ${label}`}
+      className={`p-3 cursor-pointer select-none group transition-colors hover:text-slate-100 ${
+        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+      } ${className}`}
+    >
+      <div
+        className={`inline-flex items-center gap-1.5 ${
+          align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'
+        }`}
+      >
+        <span>{label}</span>
+        <span
+          className={`text-[10px] transition-all duration-150 ${
+            isActive
+              ? 'text-indigo-400 opacity-100 font-bold scale-110'
+              : 'text-slate-600 opacity-0 group-hover:opacity-60'
+          }`}
+        >
+          {isActive ? (isAsc ? '▲' : '▼') : '↕'}
+        </span>
+      </div>
+    </th>
+  );
+}
+
 export default function TrackerHome({ companies, onSelectStock, activeTab, setActiveTab, onSaveComment }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [mode, setMode] = useState("Basic"); // "Basic" or "Advanced"
   const [editingTicker, setEditingTicker] = useState(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'desc' });
 
-  const filtered = companies.filter(c => {
-    const matchesSearch =
-      c.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.ticker?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = typeFilter === "All" || c.type === typeFilter;
-    return matchesSearch && matchesType;
-  });
+  // Handle header click sorting logic
+  const handleSort = (colKey) => {
+    setSortConfig(prev => {
+      if (prev.key === colKey) {
+        return {
+          key: colKey,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+      // Textual columns default to A-Z ('asc'), numeric to highest first ('desc')
+      const textKeys = ['company', 'type', 'analyst', 'moat', 'comment'];
+      const defaultDir = textKeys.includes(colKey) ? 'asc' : 'desc';
+      return {
+        key: colKey,
+        direction: defaultDir
+      };
+    });
+  };
+
+  // Memoized filter and universal sort pipeline
+  const filtered = useMemo(() => {
+    let list = companies.filter(c => {
+      const matchesSearch =
+        c.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.ticker?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesType = typeFilter === "All" || c.type === typeFilter;
+      return matchesSearch && matchesType;
+    });
+
+    if (!sortConfig.key) return list;
+
+    return [...list].sort((a, b) => {
+      let valA, valB;
+
+      switch (sortConfig.key) {
+        case 'company':
+          valA = (a.company_name || a.ticker || '').toLowerCase();
+          valB = (b.company_name || b.ticker || '').toLowerCase();
+          break;
+        case 'type':
+          valA = (a.type || '').toLowerCase();
+          valB = (b.type || '').toLowerCase();
+          break;
+        case 'cmp':
+          valA = a.cmp;
+          valB = b.cmp;
+          break;
+        case 'analyst':
+          valA = (a.analyst || '').toLowerCase();
+          valB = (b.analyst || '').toLowerCase();
+          break;
+        case 'base_cagr':
+          valA = a.scenarios?.["Base Case"]?.cagr_headline;
+          valB = b.scenarios?.["Base Case"]?.cagr_headline;
+          break;
+        case 'bull_cagr':
+          valA = a.scenarios?.["Bull Case"]?.cagr_headline;
+          valB = b.scenarios?.["Bull Case"]?.cagr_headline;
+          break;
+        case 'bear_cagr':
+          valA = a.scenarios?.["Bear Case"]?.cagr_headline;
+          valB = b.scenarios?.["Bear Case"]?.cagr_headline;
+          break;
+        case 'mgmt_cagr':
+          valA = a.scenarios?.["Management Case"]?.cagr_headline;
+          valB = b.scenarios?.["Management Case"]?.cagr_headline;
+          break;
+        case 'moat':
+          valA = (a.moat || '').toLowerCase();
+          valB = (b.moat || '').toLowerCase();
+          break;
+        case 'avg_fcf':
+          valA = a.avg_fcf;
+          valB = b.avg_fcf;
+          break;
+        case 'dcf':
+          valA = a.dcf;
+          valB = b.dcf;
+          break;
+        case 'market_cap_cr':
+          valA = a.market_cap_cr;
+          valB = b.market_cap_cr;
+          break;
+        case 'value_ratio':
+          valA = a.value_ratio;
+          valB = b.value_ratio;
+          break;
+        case 'pead_score':
+          valA = a.pead_score;
+          valB = b.pead_score;
+          break;
+        case 'trend':
+          valA = a.change_pct;
+          valB = b.change_pct;
+          break;
+        case 'comment':
+          valA = (a.comment || '').toLowerCase();
+          valB = (b.comment || '').toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+
+      // Safeguard: push nulls and undefined to bottom regardless of sort order
+      const isANull = valA === null || valA === undefined || (typeof valA === 'number' && isNaN(valA));
+      const isBNull = valB === null || valB === undefined || (typeof valB === 'number' && isNaN(valB));
+      if (isANull && isBNull) return 0;
+      if (isANull) return 1;
+      if (isBNull) return -1;
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return sortConfig.direction === 'asc'
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
+      }
+
+      return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+    });
+  }, [companies, searchTerm, typeFilter, sortConfig]);
 
   const handleEditComment = (c) => {
     setEditingTicker(c.ticker);
@@ -158,7 +312,17 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
               All Companies
             </button>
           </div>
-          <span className="text-xs font-mono text-slate-500">{filtered.length} of {companies.length} companies</span>
+          <span className="text-xs font-mono text-slate-500">
+            {filtered.length} of {companies.length} companies
+            {sortConfig.key && (
+              <button
+                onClick={() => setSortConfig({ key: null, direction: 'desc' })}
+                className="ml-2 text-[10px] text-indigo-400 hover:underline"
+              >
+                (Reset Sort)
+              </button>
+            )}
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -199,38 +363,156 @@ export default function TrackerHome({ companies, onSelectStock, activeTab, setAc
         </div>
       </div>
 
-      {/* 3. DYNAMIC OBSIDIAN TRACKER TABLE */}
+      {/* 3. DYNAMIC OBSIDIAN TRACKER TABLE WITH UNIVERSAL COLUMN SORTING */}
       <main className="flex-1 overflow-auto p-6">
         <div className="border border-[#1A2238] rounded-xl overflow-hidden bg-[#0E1322] shadow-2xl">
           <table className="w-full text-left border-collapse text-xs">
             <thead className="bg-[#121829] border-b border-[#1A2238] font-mono text-[11px] text-slate-400 uppercase tracking-wider sticky top-0 z-10">
               <tr>
-                <th className="p-3 w-10 text-center">#</th>
-                <th className="p-3">COMPANY</th>
-                <th className="p-3">TYPE</th>
-                <th className="p-3 text-right">CMP</th>
-                <th className="p-3">ANALYSTS</th>
-                <th className="p-3 text-right text-indigo-400">BASE CAGR</th>
-                <th className="p-3 text-right text-emerald-400">BULL CAGR</th>
-                <th className="p-3 text-right text-rose-400">BEAR CAGR</th>
-                <th className="p-3 text-right text-amber-400">MGMT CAGR</th>
+                <th
+                  onClick={() => setSortConfig({ key: null, direction: 'desc' })}
+                  title="Click to reset sorting"
+                  className="p-3 w-10 text-center cursor-pointer hover:text-slate-200"
+                >
+                  #
+                </th>
+
+                <SortHeader
+                  label="COMPANY"
+                  colKey="company"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+
+                <SortHeader
+                  label="TYPE"
+                  colKey="type"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+
+                <SortHeader
+                  label="CMP"
+                  colKey="cmp"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  align="right"
+                />
+
+                <SortHeader
+                  label="ANALYSTS"
+                  colKey="analyst"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+
+                <SortHeader
+                  label="BASE CAGR"
+                  colKey="base_cagr"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  align="right"
+                  className="text-indigo-400"
+                />
+
+                <SortHeader
+                  label="BULL CAGR"
+                  colKey="bull_cagr"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  align="right"
+                  className="text-emerald-400"
+                />
+
+                <SortHeader
+                  label="BEAR CAGR"
+                  colKey="bear_cagr"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  align="right"
+                  className="text-rose-400"
+                />
+
+                <SortHeader
+                  label="MGMT CAGR"
+                  colKey="mgmt_cagr"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  align="right"
+                  className="text-amber-400"
+                />
 
                 {/* ADVANCED COLUMNS EXPANSION */}
                 {mode === "Advanced" && (
                   <>
-                    <th className="p-3 text-center">MOAT</th>
-                    <th className="p-3 text-right">AVG FCF (CR)</th>
-                    <th className="p-3 text-right">DCF (25X)</th>
-                    <th className="p-3 text-right">MCAP (CR)</th>
-                    <th className="p-3 text-center">VALUE</th>
-                    <th className="p-3 text-center">PEAD</th>
+                    <SortHeader
+                      label="MOAT"
+                      colKey="moat"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      align="center"
+                    />
+
+                    <SortHeader
+                      label="AVG FCF (CR)"
+                      colKey="avg_fcf"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      align="right"
+                    />
+
+                    <SortHeader
+                      label="DCF (25X)"
+                      colKey="dcf"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      align="right"
+                    />
+
+                    <SortHeader
+                      label="MCAP (CR)"
+                      colKey="market_cap_cr"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      align="right"
+                    />
+
+                    <SortHeader
+                      label="VALUE"
+                      colKey="value_ratio"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      align="center"
+                    />
+
+                    <SortHeader
+                      label="PEAD"
+                      colKey="pead_score"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      align="center"
+                    />
                   </>
                 )}
 
-                <th className="p-3 text-center">TREND</th>
+                <SortHeader
+                  label="TREND"
+                  colKey="trend"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  align="center"
+                  title="Sort by 1-Month Trend %"
+                />
+
                 <th className="p-3 text-center">RESULTS</th>
                 <th className="p-3 text-center">REPORTS</th>
-                <th className="p-3">COMMENTS</th>
+
+                <SortHeader
+                  label="COMMENTS"
+                  colKey="comment"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1A2238]/60 font-sans">
